@@ -13,6 +13,7 @@
 
 #include "WhitespaceManager.h"
 #include "llvm/ADT/STLExtras.h"
+#include <unistd.h>
 
 namespace clang {
 namespace format {
@@ -746,40 +747,107 @@ void WhitespaceManager::alignEscapedNewlines(unsigned Start, unsigned End,
   }
 }
 
-void WhitespaceManager::generateChanges() {
-  for (unsigned i = 0, e = Changes.size(); i != e; ++i) {
+namespace
+{
+
+  void terence_print_changes(WhitespaceManager::Change const &change, std::string const & text)
+  {
+    static int number = 0;
+
+      // printf("===================== [%d ]  ============================= \n", number++);
+
+      const FormatToken & format_token = *(change.Tok);
+      // printf("FormatToken text [%s]\n", format_token.TokenText.data());
+      // printf("FormatToken SpacesRequiredBefore [%u]\n", format_token.SpacesRequiredBefore);
+
+      const Token & token = format_token.Tok;
+      printf("[%d] Error for Token  [%s]\n", number++, token.getName());
+      printf("TokenLength => %u\n", change.TokenLength);
+      printf(" TOKEN ==> "); write(1, "[", 1);write(1, format_token.TokenText.data(), change.TokenLength); write(1, "]\n", 2);
+
+      // printf("CreateReplacement => %u\n", change.CreateReplacement);
+      // printf("OriginalWhitespaceRange => %u\n", change.OriginalWhitespaceRange);
+      // printf("StartOfTokenColumn => %u\n", change.StartOfTokenColumn);
+      // printf("NewlinesBefore => %u\n", change.NewlinesBefore);
+      // printf("PreviousLinePostfix => [%s]\n", change.PreviousLinePostfix.data());
+      // printf("CurrentLinePrefix => [%s]\n", change.CurrentLinePrefix.data());
+      // printf("IsAligned => %u\n", change.IsAligned);
+      // printf("ContinuesPPDirective => %u\n", change.ContinuesPPDirective);
+      // printf("Spaces => %d\n", change.Spaces);
+      // printf("IsInsideToken => %u\n", change.IsInsideToken);
+      // printf("IsTrailingComment => %u\n", change.IsTrailingComment);
+      // printf("PreviousEndOfTokenColumn => %u\n", change.PreviousEndOfTokenColumn);
+      // printf("EscapedNewlineColumn => %u\n", change.EscapedNewlineColumn);
+
+      // printf("IndentationOffset => %d\n", change.IndentationOffset);
+
+      // printf("======================================================================================= \n\n");
+  }
+
+}
+
+void WhitespaceManager::generateChanges()
+{
+  for (unsigned i = 0, e = Changes.size(); i != e; ++i)
+  {
     const Change &C = Changes[i];
-    if (i > 0) {
+    if (i > 0)
+    {
       assert(Changes[i - 1].OriginalWhitespaceRange.getBegin() !=
                  C.OriginalWhitespaceRange.getBegin() &&
              "Generating two replacements for the same location");
     }
-    if (C.CreateReplacement) {
+    if (C.CreateReplacement)
+    {
       std::string ReplacementText = C.PreviousLinePostfix;
       if (C.ContinuesPPDirective)
+      {
         appendEscapedNewlineText(ReplacementText, C.NewlinesBefore,
                                  C.PreviousEndOfTokenColumn,
                                  C.EscapedNewlineColumn);
+      }
       else
+      {
         appendNewlineText(ReplacementText, C.NewlinesBefore);
+      }
       appendIndentText(
           ReplacementText, C.Tok->IndentLevel, std::max(0, C.Spaces),
           C.StartOfTokenColumn - std::max(0, C.Spaces), C.IsAligned);
       ReplacementText.append(C.CurrentLinePrefix);
-      storeReplacement(C.OriginalWhitespaceRange, ReplacementText);
+
+
+      // unsigned WhitespaceLength = SourceMgr.getFileOffset(C.OriginalWhitespaceRange.getEnd()) -
+      //                             SourceMgr.getFileOffset(C.OriginalWhitespaceRange.getBegin());
+      // // Don't create a replacement, if it does not change anything.
+      // if (  !(StringRef(SourceMgr.getCharacterData(C.OriginalWhitespaceRange.getBegin()),
+      //               WhitespaceLength) == ReplacementText ) )
+      // {
+      //   terence_print_changes(C, ReplacementText);
+      // }
+
+      storeReplacement(C, ReplacementText);
     }
   }
 }
 
-void WhitespaceManager::storeReplacement(SourceRange Range, StringRef Text) {
+void WhitespaceManager::storeReplacement(Change const &C, StringRef Text)
+{
+  SourceRange const Range = C.OriginalWhitespaceRange;
+
   unsigned WhitespaceLength = SourceMgr.getFileOffset(Range.getEnd()) -
                               SourceMgr.getFileOffset(Range.getBegin());
   // Don't create a replacement, if it does not change anything.
   if (StringRef(SourceMgr.getCharacterData(Range.getBegin()),
                 WhitespaceLength) == Text)
     return;
+
+  FormatToken const & format_token = *(C.Tok);
+
+  // printf("ici 1 [%u]\n", format_token.TokenText.size());
+  // printf("ici2 [%s]\n", std::string(format_token.TokenText).data());
+
   auto Err = Replaces.add(tooling::Replacement(
-      SourceMgr, CharSourceRange::getCharRange(Range), Text));
+      SourceMgr, CharSourceRange::getCharRange(Range), Text, std::string(format_token.TokenText.data(), format_token.TokenText.size()), "Whitespace Error"));
   // FIXME: better error handling. For now, just print an error message in the
   // release version.
   if (Err) {

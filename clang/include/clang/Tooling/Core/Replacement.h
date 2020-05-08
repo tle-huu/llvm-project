@@ -25,6 +25,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <map>
 #include <set>
 #include <string>
@@ -92,7 +93,8 @@ public:
   /// \param Offset The byte offset of the start of the range in the file.
   /// \param Length The length of the range in bytes.
   Replacement(StringRef FilePath, unsigned Offset, unsigned Length,
-              StringRef ReplacementText);
+              StringRef ReplacementText, StringRef TokenName = {},
+              StringRef DescText = {});
 
   /// Creates a Replacement of the range [Start, Start+Length) with
   /// ReplacementText.
@@ -101,7 +103,8 @@ public:
 
   /// Creates a Replacement of the given range with ReplacementText.
   Replacement(const SourceManager &Sources, const CharSourceRange &Range,
-              StringRef ReplacementText,
+              StringRef ReplacementText, StringRef TokenName = {},
+              StringRef DescText = {},
               const LangOptions &LangOpts = LangOptions());
 
   /// Creates a Replacement of the node with ReplacementText.
@@ -129,6 +132,9 @@ public:
   /// Returns a human readable string representation.
   std::string toString() const;
 
+  inline std::string getDescription() const { return Description; }
+  inline std::string getTokenName() const { return TokenName; }
+
 private:
   void setFromSourceLocation(const SourceManager &Sources, SourceLocation Start,
                              unsigned Length, StringRef ReplacementText);
@@ -140,6 +146,9 @@ private:
   std::string FilePath;
   Range ReplacementRange;
   std::string ReplacementText;
+
+  std::string Description;
+  std::string TokenName;
 };
 
 enum class replacement_error {
@@ -289,7 +298,9 @@ public:
 
 private:
   Replacements(const_iterator Begin, const_iterator End)
-      : Replaces(Begin, End) {}
+      : Replaces(Begin, End)
+      {
+      }
 
   // Returns `R` with new range that refers to code after `Replaces` being
   // applied.

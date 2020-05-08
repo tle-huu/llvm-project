@@ -283,7 +283,18 @@ static void outputReplacementsXML(const Replacements &Replaces) {
   for (const auto &R : Replaces) {
     outs() << "<replacement "
            << "offset='" << R.getOffset() << "' "
-           << "length='" << R.getLength() << "'>";
+           << "length='" << R.getLength() << "' ";
+
+    if (!R.getTokenName().empty())
+    {
+      outs() << "token='" << R.getTokenName() << "' ";
+    }
+    if (!R.getDescription().empty())
+    {
+      outs() << "desc='" << R.getDescription() << "' ";
+    }
+    outs() << ">";
+
     outputReplacementXML(R.getReplacementText());
     outs() << "</replacement>\n";
   }
@@ -294,7 +305,7 @@ emitReplacementWarnings(const Replacements &Replaces, StringRef AssumedFileName,
                         const std::unique_ptr<llvm::MemoryBuffer> &Code) {
   if (Replaces.empty())
     return false;
-
+ 
   unsigned Errors = 0;
   if (WarnFormat && !NoWarnFormat) {
     llvm::SourceMgr Mgr;
@@ -387,8 +398,13 @@ static bool format(StringRef FileName) {
   if (SortIncludes.getNumOccurrences() != 0)
     FormatStyle->SortIncludes = SortIncludes;
   unsigned CursorPosition = Cursor;
+
+
   Replacements Replaces = sortIncludes(*FormatStyle, Code->getBuffer(), Ranges,
                                        AssumedFileName, &CursorPosition);
+
+
+
   auto ChangedCode = tooling::applyAllReplacements(Code->getBuffer(), Replaces);
   if (!ChangedCode) {
     llvm::errs() << llvm::toString(ChangedCode.takeError()) << "\n";
@@ -397,9 +413,16 @@ static bool format(StringRef FileName) {
   // Get new affected ranges after sorting `#includes`.
   Ranges = tooling::calculateRangesAfterReplacements(Replaces, Ranges);
   FormattingAttemptStatus Status;
-  Replacements FormatChanges =
-      reformat(*FormatStyle, *ChangedCode, Ranges, AssumedFileName, &Status);
+
+
+
+      Replacements FormatChanges =
+          reformat(*FormatStyle, *ChangedCode, Ranges, AssumedFileName, &Status);
+
+
+
   Replaces = Replaces.merge(FormatChanges);
+
   if (OutputXML || DryRun) {
     if (DryRun) {
       return emitReplacementWarnings(Replaces, AssumedFileName, Code);
@@ -465,6 +488,7 @@ static int dumpConfig() {
     Code = std::move(CodeOrErr.get());
   }
   llvm::Expected<clang::format::FormatStyle> FormatStyle =
+
       clang::format::getStyle(Style, FileName, FallbackStyle,
                               Code ? Code->getBuffer() : "");
   if (!FormatStyle) {
@@ -477,6 +501,8 @@ static int dumpConfig() {
 }
 
 int main(int argc, const char **argv) {
+
+
   llvm::InitLLVM X(argc, argv);
 
   cl::HideUnrelatedOptions(ClangFormatCategory);
@@ -511,6 +537,7 @@ int main(int argc, const char **argv) {
               "single file.\n";
     return 1;
   }
+
   for (const auto &FileName : FileNames) {
     if (Verbose)
       errs() << "Formatting " << FileName << "\n";

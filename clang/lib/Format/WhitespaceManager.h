@@ -199,7 +199,7 @@ private:
   void generateChanges();
 
   /// Stores \p Text as the replacement for the whitespace in \p Range.
-  void storeReplacement(SourceRange Range, StringRef Text);
+  void storeReplacement(Change const &C, StringRef Text);
   void appendNewlineText(std::string &Text, unsigned Newlines);
   void appendEscapedNewlineText(std::string &Text, unsigned Newlines,
                                 unsigned PreviousEndOfTokenColumn,

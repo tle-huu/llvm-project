@@ -1691,7 +1691,9 @@ operator>>(Input &yin, T &docList) {
   int i = 0;
   EmptyContext Ctx;
   while ( yin.setCurrentDocument() ) {
+
     yamlize(yin, DocumentListTraits<T>::element(yin, docList, i), true, Ctx);
+    
     if ( yin.error() )
       return yin;
     yin.nextDocument();

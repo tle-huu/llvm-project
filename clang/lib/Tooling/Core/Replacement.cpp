@@ -45,9 +45,14 @@ static const char * const InvalidLocation = "";
 Replacement::Replacement() : FilePath(InvalidLocation) {}
 
 Replacement::Replacement(StringRef FilePath, unsigned Offset, unsigned Length,
-                         StringRef ReplacementText)
+                         StringRef ReplacementText, StringRef TokenName_,
+                         StringRef DescText)
     : FilePath(std::string(FilePath)), ReplacementRange(Offset, Length),
-      ReplacementText(std::string(ReplacementText)) {}
+      ReplacementText(std::string(ReplacementText)),
+      Description(std::string(DescText)),
+      TokenName(std::string(TokenName_))
+
+      {}
 
 Replacement::Replacement(const SourceManager &Sources, SourceLocation Start,
                          unsigned Length, StringRef ReplacementText) {
@@ -57,8 +62,12 @@ Replacement::Replacement(const SourceManager &Sources, SourceLocation Start,
 Replacement::Replacement(const SourceManager &Sources,
                          const CharSourceRange &Range,
                          StringRef ReplacementText,
+                         StringRef TokenName_,
+                         StringRef DescText,
                          const LangOptions &LangOpts) {
   setFromSourceRange(Sources, Range, ReplacementText, LangOpts);
+  TokenName = std::string(TokenName_);
+  Description = std::string(DescText);
 }
 
 bool Replacement::isApplicable() const {
@@ -67,11 +76,13 @@ bool Replacement::isApplicable() const {
 
 bool Replacement::apply(Rewriter &Rewrite) const {
   SourceManager &SM = Rewrite.getSourceMgr();
+
   auto Entry = SM.getFileManager().getFile(FilePath);
   if (!Entry)
     return false;
 
   FileID ID = SM.getOrCreateFileID(*Entry, SrcMgr::C_User);
+  
   const SourceLocation Start =
     SM.getLocForStartOfFile(ID).
     getLocWithOffset(ReplacementRange.getOffset());
@@ -111,7 +122,9 @@ bool operator==(const Replacement &LHS, const Replacement &RHS) {
   return LHS.getOffset() == RHS.getOffset() &&
          LHS.getLength() == RHS.getLength() &&
          LHS.getFilePath() == RHS.getFilePath() &&
-         LHS.getReplacementText() == RHS.getReplacementText();
+         LHS.getReplacementText() == RHS.getReplacementText() &&
+         LHS.getDescription() == RHS.getDescription() &&
+         LHS.getTokenName() == RHS.getTokenName();
 }
 
 } // namespace tooling
@@ -259,7 +272,7 @@ llvm::Error Replacements::add(const Replacement &R) {
   // We also know that there currently are no overlapping replacements.
   // Thus, we know that all replacements that start after the end of the current
   // replacement cannot overlap.
-  Replacement AtEnd(R.getFilePath(), R.getOffset() + R.getLength(), 0, "");
+  Replacement AtEnd(R.getFilePath(), R.getOffset() + R.getLength(), 0, "", R.getTokenName(), R.getDescription());
 
   // Find the first entry that starts after or at the end of R. Note that
   // entries that start at the end can still be conflicting if R is an
@@ -279,7 +292,8 @@ llvm::Error Replacements::add(const Replacement &R) {
       // If insertions are order-independent, we can merge them.
       Replacement NewR(
           R.getFilePath(), R.getOffset(), 0,
-          (R.getReplacementText() + I->getReplacementText()).str());
+          (R.getReplacementText() + I->getReplacementText()).str(),
+          R.getTokenName(), R.getDescription());
       Replaces.erase(I);
       Replaces.insert(std::move(NewR));
       return llvm::Error::success();
@@ -368,7 +382,9 @@ public:
   MergedReplacement(const Replacement &R, bool MergeSecond, int D)
       : MergeSecond(MergeSecond), Delta(D), FilePath(R.getFilePath()),
         Offset(R.getOffset() + (MergeSecond ? 0 : Delta)),
-        Length(R.getLength()), Text(std::string(R.getReplacementText())) {
+        Length(R.getLength()), Text(std::string(R.getReplacementText())),
+        Description(R.getDescription()), TokenName(R.getTokenName())
+  {
     Delta += MergeSecond ? 0 : Text.size() - Length;
     DeltaFirst = MergeSecond ? Text.size() - Length : 0;
   }
@@ -389,6 +405,9 @@ public:
       StringRef Tail = TextRef.substr(REnd - Offset);
       Text = (Head + R.getReplacementText() + Tail).str();
       Delta += R.getReplacementText().size() - R.getLength();
+
+      TokenName = TokenName + R.getTokenName();
+
     } else {
       unsigned End = Offset + Length;
       StringRef RText = R.getReplacementText();
@@ -401,6 +420,9 @@ public:
         Length += R.getLength() - RText.size();
       }
       DeltaFirst += RText.size() - R.getLength();
+
+      TokenName = R.getTokenName() + TokenName;
+
     }
   }
 
@@ -416,7 +438,10 @@ public:
   bool mergeSecond() const { return MergeSecond; }
 
   int deltaFirst() const { return DeltaFirst; }
-  Replacement asReplacement() const { return {FilePath, Offset, Length, Text}; }
+  Replacement asReplacement() const
+  {
+    return {FilePath, Offset, Length, Text, TokenName, Description};
+  }
 
 private:
   bool MergeSecond;
@@ -436,6 +461,12 @@ private:
   const unsigned Offset;
   unsigned Length;
   std::string Text;
+
+  // High level description of the change
+  std::string Description;
+  // TokenName implied
+  std::string TokenName;
+
 };
 
 } // namespace
@@ -456,16 +487,19 @@ Replacements Replacements::merge(const Replacements &ReplacesToMerge) const {
   // subsequent replacements as long as they overlap. See more details in the
   // comment on MergedReplacement.
   for (auto FirstI = First.begin(), SecondI = Second.begin();
-       FirstI != First.end() || SecondI != Second.end();) {
+       FirstI != First.end() || SecondI != Second.end();)
+  {
     bool NextIsFirst = SecondI == Second.end() ||
                        (FirstI != First.end() &&
                         FirstI->getOffset() < SecondI->getOffset() + Delta);
+
     MergedReplacement Merged(NextIsFirst ? *FirstI : *SecondI, NextIsFirst,
                              Delta);
     ++(NextIsFirst ? FirstI : SecondI);
 
     while ((Merged.mergeSecond() && SecondI != Second.end()) ||
-           (!Merged.mergeSecond() && FirstI != First.end())) {
+           (!Merged.mergeSecond() && FirstI != First.end()))
+    {
       auto &I = Merged.mergeSecond() ? SecondI : FirstI;
       if (Merged.endsBefore(*I))
         break;

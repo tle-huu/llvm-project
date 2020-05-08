@@ -52,6 +52,7 @@ public:
     // left them in a different state.
     First->Previous = nullptr;
     FormatToken *Current = First;
+    
     for (std::list<UnwrappedLineNode>::const_iterator I = ++Line.Tokens.begin(),
                                                       E = Line.Tokens.end();
          I != E; ++I) {
@@ -185,10 +186,10 @@ private:
 
   bool mustBreakForReturnType(const AnnotatedLine &Line) const;
 
-  void printDebugInfo(const AnnotatedLine &Line);
 
   void calculateUnbreakableTailLengths(AnnotatedLine &Line);
 
+  void printDebugInfo(const AnnotatedLine &Line);
   const FormatStyle &Style;
 
   const AdditionalKeywords &Keywords;

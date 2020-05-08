@@ -64,6 +64,7 @@ TokenAnalyzer::TokenAnalyzer(const Environment &Env, const FormatStyle &Style)
 
 std::pair<tooling::Replacements, unsigned> TokenAnalyzer::process() {
   tooling::Replacements Result;
+  
   FormatTokenLexer Tokens(Env.getSourceManager(), Env.getFileID(),
                           Env.getFirstStartColumn(), Style, Encoding);
 
@@ -72,18 +73,24 @@ std::pair<tooling::Replacements, unsigned> TokenAnalyzer::process() {
   Parser.parse();
   assert(UnwrappedLines.rbegin()->empty());
   unsigned Penalty = 0;
-  for (unsigned Run = 0, RunE = UnwrappedLines.size(); Run + 1 != RunE; ++Run) {
+
+  for (unsigned Run = 0, RunE = UnwrappedLines.size(); Run + 1 != RunE; ++Run)
+  {
     LLVM_DEBUG(llvm::dbgs() << "Run " << Run << "...\n");
     SmallVector<AnnotatedLine *, 16> AnnotatedLines;
 
     TokenAnnotator Annotator(Style, Tokens.getKeywords());
-    for (unsigned i = 0, e = UnwrappedLines[Run].size(); i != e; ++i) {
+    for (unsigned i = 0, e = UnwrappedLines[Run].size(); i != e; ++i)
+    {
       AnnotatedLines.push_back(new AnnotatedLine(UnwrappedLines[Run][i]));
       Annotator.annotate(*AnnotatedLines.back());
     }
 
-    std::pair<tooling::Replacements, unsigned> RunResult =
-        analyze(Annotator, AnnotatedLines, Tokens);
+
+        std::pair<tooling::Replacements, unsigned> RunResult =
+            analyze(Annotator, AnnotatedLines, Tokens);
+
+
 
     LLVM_DEBUG({
       llvm::dbgs() << "Replacements for run " << Run << ":\n";
@@ -98,7 +105,8 @@ std::pair<tooling::Replacements, unsigned> TokenAnalyzer::process() {
     }
 
     Penalty += RunResult.second;
-    for (const auto &R : RunResult.first) {
+    for (const auto &R : RunResult.first)
+    {
       auto Err = Result.add(R);
       // FIXME: better error handling here. For now, simply return an empty
       // Replacements to indicate failure.
